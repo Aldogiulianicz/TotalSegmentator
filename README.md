@@ -137,7 +137,7 @@ Thank you to [INGEDATA](https://www.ingedata.ai/) for providing a team of radiol
 * `--save_lowres`: Save the segmentation at the model resolution (e.g. 1.5mm, or 3mm/6mm with `--fast`/`--fastest`) instead of upsampling it back to the input resolution. Skips the slow upsample and keeps the output on the model grid.
 * `--robust_crop`: For some tasks and for roi_subset a 6mm low resolution model is used to crop to the region of interest. Sometimes this model is incorrect, which leads to artifacts like segmentations being cut off. robust_crop will use a better but slower 3mm model instead.
 * `--preview`: This will generate a 3D rendering of all classes, giving you a quick overview if the segmentation worked and where it failed (see `preview.png` in output directory).
-* `--radiomics`: This will generate a file `statistics_radiomics.json` with the radiomics features of each class. You have to install pyradiomics to use this (`pip install pyradiomics`).
+* `--radiomics`: This will generate a file `statistics_radiomics.json` with the radiomics features of each class. You have to install Radiomics.jl to use this (`pip install radiomicsjl && python -m radiomicsjl setup`).
 * `--report`: This will write a machine-readable JSON run manifest to the given path (software and model versions, resolved device, task, classes, runtime and the list of output files). Useful for reproducible pipelines and automation.
 * `--list-tasks` / `--list-classes [task]`: Print the available tasks (or the classes of one task) and exit, without running a segmentation. For machine-readable output use the `totalseg_info` command below.
 
