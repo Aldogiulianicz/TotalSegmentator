@@ -15,15 +15,12 @@ from totalsegmentator.map_to_binary import class_map
 
 def get_radiomics_features(seg_file, img_file="ct.nii.gz"):
 
-    def _resample(image, spacing_out=(3.0, 3.0, 3.0), is_label=False):
+    def _resample(image, interpolator = sitk.sitkLinear, spacing_out=(3.0, 3.0, 3.0)):
         original_spacing = image.GetSpacing()
         original_size = image.GetSize()
 
         new_size = [int(np.ceil(osz * ospc / nspc))
             for osz, ospc, nspc in zip(original_size, original_spacing, spacing_out)]
-
-        interpolator = sitk.sitkNearestNeighbor if is_label else sitk.sitkLinear
-        default_val = 0 if is_label else 0.0
 
         return sitk.Resample(
             image,
@@ -33,7 +30,7 @@ def get_radiomics_features(seg_file, img_file="ct.nii.gz"):
             image.GetOrigin(),
             spacing_out,
             image.GetDirection(),
-            default_val,
+            0,
             image.GetPixelID()
         )
 
@@ -98,7 +95,7 @@ def get_radiomics_features(seg_file, img_file="ct.nii.gz"):
             image = sitk.ReadImage(str(img_file))
 
             image_res = _resample(image)
-            mask_res = _resample(mask, is_label=True)
+            mask_res = _resample(mask, sitk.sitkNearestNeighbor)
 
             features = {}
             for lab in labels:
