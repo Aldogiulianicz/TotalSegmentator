@@ -5,6 +5,7 @@ from functools import partial
 from typing import Union
 
 import numpy as np
+import SimpleITK as sitk
 import nibabel as nib
 from nibabel.nifti1 import Nifti1Image
 from tqdm import tqdm
@@ -13,44 +14,105 @@ from totalsegmentator.map_to_binary import class_map
 
 
 def get_radiomics_features(seg_file, img_file="ct.nii.gz"):
-    # import SimpleITK as sitk
-    import radiomics
-    from radiomics import featureextractor
 
-    standard_features = ['shape_Elongation', 'shape_Flatness', 'shape_LeastAxisLength', 'shape_MajorAxisLength', 'shape_Maximum2DDiameterColumn', 'shape_Maximum2DDiameterRow', 'shape_Maximum2DDiameterSlice', 'shape_Maximum3DDiameter', 'shape_MeshVolume', 'shape_MinorAxisLength', 'shape_Sphericity', 'shape_SurfaceArea', 'shape_SurfaceVolumeRatio', 'shape_VoxelVolume', 'firstorder_10Percentile', 'firstorder_90Percentile', 'firstorder_Energy', 'firstorder_Entropy', 'firstorder_InterquartileRange', 'firstorder_Kurtosis', 'firstorder_Maximum', 'firstorder_MeanAbsoluteDeviation', 'firstorder_Mean', 'firstorder_Median', 'firstorder_Minimum', 'firstorder_Range', 'firstorder_RobustMeanAbsoluteDeviation', 'firstorder_RootMeanSquared', 'firstorder_Skewness', 'firstorder_TotalEnergy', 'firstorder_Uniformity', 'firstorder_Variance', 'glcm_Autocorrelation', 'glcm_ClusterProminence', 'glcm_ClusterShade', 'glcm_ClusterTendency', 'glcm_Contrast', 'glcm_Correlation', 'glcm_DifferenceAverage', 'glcm_DifferenceEntropy', 'glcm_DifferenceVariance', 'glcm_Id', 'glcm_Idm', 'glcm_Idmn', 'glcm_Idn', 'glcm_Imc1', 'glcm_Imc2', 'glcm_InverseVariance', 'glcm_JointAverage', 'glcm_JointEnergy', 'glcm_JointEntropy', 'glcm_MCC', 'glcm_MaximumProbability', 'glcm_SumAverage', 'glcm_SumEntropy', 'glcm_SumSquares', 'gldm_DependenceEntropy', 'gldm_DependenceNonUniformity', 'gldm_DependenceNonUniformityNormalized', 'gldm_DependenceVariance', 'gldm_GrayLevelNonUniformity', 'gldm_GrayLevelVariance', 'gldm_HighGrayLevelEmphasis', 'gldm_LargeDependenceEmphasis', 'gldm_LargeDependenceHighGrayLevelEmphasis', 'gldm_LargeDependenceLowGrayLevelEmphasis', 'gldm_LowGrayLevelEmphasis', 'gldm_SmallDependenceEmphasis', 'gldm_SmallDependenceHighGrayLevelEmphasis', 'gldm_SmallDependenceLowGrayLevelEmphasis', 'glrlm_GrayLevelNonUniformity', 'glrlm_GrayLevelNonUniformityNormalized', 'glrlm_GrayLevelVariance', 'glrlm_HighGrayLevelRunEmphasis', 'glrlm_LongRunEmphasis', 'glrlm_LongRunHighGrayLevelEmphasis', 'glrlm_LongRunLowGrayLevelEmphasis', 'glrlm_LowGrayLevelRunEmphasis', 'glrlm_RunEntropy', 'glrlm_RunLengthNonUniformity', 'glrlm_RunLengthNonUniformityNormalized', 'glrlm_RunPercentage', 'glrlm_RunVariance', 'glrlm_ShortRunEmphasis', 'glrlm_ShortRunHighGrayLevelEmphasis', 'glrlm_ShortRunLowGrayLevelEmphasis', 'glszm_GrayLevelNonUniformity', 'glszm_GrayLevelNonUniformityNormalized', 'glszm_GrayLevelVariance', 'glszm_HighGrayLevelZoneEmphasis', 'glszm_LargeAreaEmphasis', 'glszm_LargeAreaHighGrayLevelEmphasis', 'glszm_LargeAreaLowGrayLevelEmphasis', 'glszm_LowGrayLevelZoneEmphasis', 'glszm_SizeZoneNonUniformity', 'glszm_SizeZoneNonUniformityNormalized', 'glszm_SmallAreaEmphasis', 'glszm_SmallAreaHighGrayLevelEmphasis', 'glszm_SmallAreaLowGrayLevelEmphasis', 'glszm_ZoneEntropy', 'glszm_ZonePercentage', 'glszm_ZoneVariance', 'ngtdm_Busyness', 'ngtdm_Coarseness', 'ngtdm_Complexity', 'ngtdm_Contrast', 'ngtdm_Strength']
+    def _resample(image, spacing_out=(3.0, 3.0, 3.0), is_label=False):
+        original_spacing = image.GetSpacing()
+        original_size = image.GetSize()
+
+        new_size = [int(np.ceil(osz * ospc / nspc))
+            for osz, ospc, nspc in zip(original_size, original_spacing, spacing_out)]
+
+        interpolator = sitk.sitkNearestNeighbor if is_label else sitk.sitkLinear
+        default_val = 0 if is_label else 0.0
+
+        return sitk.Resample(
+            image,
+            new_size,
+            sitk.Transform(),
+            interpolator,
+            image.GetOrigin(),
+            spacing_out,
+            image.GetDirection(),
+            default_val,
+            image.GetPixelID()
+        )
+
+
+    standard_features = [
+        'firstorder_energy', 'firstorder_entropy',
+        'firstorder_interquartile_range', 'firstorder_kurtosis', 'firstorder_maximum', 'firstorder_mean',
+        'firstorder_mean_absolute_deviation', 'firstorder_median', 'firstorder_minimum',
+        'firstorder_percentile10', 'firstorder_percentile90', 'firstorder_range',
+        'firstorder_robust_mean_absolute_deviation', 'firstorder_root_mean_squared',
+        'firstorder_skewness', 'firstorder_standard_deviation', 'firstorder_total_energy',
+        'firstorder_uniformity', 'firstorder_variance',
+        'glcm_Autocorrelation', 'glcm_ClusterProminence',
+        'glcm_ClusterShade', 'glcm_ClusterTendency', 'glcm_Contrast', 'glcm_Correlation',
+        'glcm_DifferenceAverage', 'glcm_DifferenceEntropy', 'glcm_DifferenceVariance', 'glcm_Id',
+        'glcm_Idm', 'glcm_Idmn', 'glcm_Idn', 'glcm_Imc1', 'glcm_Imc2', 'glcm_InverseVariance',
+        'glcm_JointAverage', 'glcm_JointEnergy', 'glcm_JointEntropy', 'glcm_MaximumProbability',
+        'glcm_Mcc', 'glcm_SumAverage', 'glcm_SumEntropy', 'glcm_SumSquares',
+        'gldm_DependenceEntropy',
+        'gldm_DependenceNonUniformity', 'gldm_DependenceNonUniformityNormalized', 'gldm_DependenceVariance',
+        'gldm_GrayLevelNonUniformity', 'gldm_GrayLevelVariance', 'gldm_HighGrayLevelEmphasis',
+        'gldm_LargeDependenceEmphasis', 'gldm_LargeDependenceHighGrayLevelEmphasis',
+        'gldm_LargeDependenceLowGrayLevelEmphasis', 'gldm_LowGrayLevelEmphasis',
+        'gldm_SmallDependenceEmphasis', 'gldm_SmallDependenceHighGrayLevelEmphasis',
+        'gldm_SmallDependenceLowGrayLevelEmphasis',
+        'glrlm_GrayLevelNonUniformity',
+        'glrlm_GrayLevelNonUniformityNormalized', 'glrlm_GrayLevelVariance',
+        'glrlm_HighGrayLevelRunEmphasis', 'glrlm_LongRunEmphasis', 'glrlm_LongRunHighGrayLevelEmphasis',
+        'glrlm_LongRunLowGrayLevelEmphasis', 'glrlm_LowGrayLevelRunEmphasis', 'glrlm_RunEntropy',
+        'glrlm_RunLengthNonUniformity', 'glrlm_RunLengthNonUniformityNormalized', 'glrlm_RunPercentage',
+        'glrlm_RunVariance', 'glrlm_ShortRunEmphasis', 'glrlm_ShortRunHighGrayLevelEmphasis',
+        'glrlm_ShortRunLowGrayLevelEmphasis',
+        'glszm_GrayLevelNonUniformity',
+        'glszm_GrayLevelNonUniformityNormalized', 'glszm_GrayLevelVariance', 'glszm_HighGrayLevelZoneEmphasis',
+        'glszm_LargeAreaEmphasis', 'glszm_LargeAreaHighGrayLevelEmphasis', 'glszm_LargeAreaLowGrayLevelEmphasis',
+        'glszm_LowGrayLevelZoneEmphasis', 'glszm_SizeZoneNonUniformity', 'glszm_SizeZoneNonUniformityNormalized',
+        'glszm_SmallAreaEmphasis', 'glszm_SmallAreaHighGrayLevelEmphasis', 'glszm_SmallAreaLowGrayLevelEmphasis',
+        'glszm_ZoneEntropy', 'glszm_ZonePercentage', 'glszm_ZoneVariance',
+        'ngtdm_Busyness', 'ngtdm_Coarseness', 'ngtdm_Complexity', 'ngtdm_Contrast', 'ngtdm_Strength',
+        'shape3d_elongation', 'shape3d_flatness', 'shape3d_least_axis_length', 'shape3d_major_axis_length',
+        'shape3d_maximum_2d_diameter_column', 'shape3d_maximum_2d_diameter_row',
+        'shape3d_maximum_2d_diameter_slice', 'shape3d_maximum_3d_diameter', 'shape3d_mesh_volume',
+        'shape3d_minor_axis_length', 'shape3d_number_of_islands', 'shape3d_sphericity',
+        'shape3d_surface_area', 'shape3d_surface_volume_ratio', 'shape3d_voxel_volume',
+    ]
 
     try:
-        if len(np.unique(nib.load(seg_file).get_fdata())) > 1:
-            settings = {}
-            # settings["binWidth"] = 25
-            # settings["resampledPixelSpacing"] = None  # [3,3,3] is an example for defining resampling (voxels with size 3x3x3mm)
-            settings["resampledPixelSpacing"] = [3,3,3]
-            # settings["interpolator"] = sitk.sitkBSpline
-            settings["geometryTolerance"] = 1e-3  # default: 1e-6
-            settings["featureClass"] = ["shape"]
-            extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
-            # Only use subset of features
-            extractor.disableAllFeatures()
-            extractor.enableFeatureClassByName("shape")
-            extractor.enableFeatureClassByName("firstorder")
-            features = extractor.execute(str(img_file), str(seg_file))
+        import radiomicsjl as rjl
 
-            features = {k.replace("original_", ""): v for k, v in features.items() if k.startswith("original_")}
+        mask = sitk.ReadImage(str(seg_file))
+        seg = sitk.GetArrayFromImage(mask)
+
+        labels = np.unique(seg)  # unique values present in the mask
+
+        if len(labels) <= 1:
+            print("WARNING: Entire mask is 0 or uniform. Setting all features to 0")
+            features = {0: {feat: 0 for feat in standard_features}}
         else:
-            print("WARNING: Entire mask is 0 or 1. Setting all features to 0")
-            features = {feat: 0 for feat in standard_features}
+            
+            labels = labels[labels != 0].astype(int)  # remove background and convert to int
+
+            image = sitk.ReadImage(str(img_file))
+
+            image_res = _resample(image)
+            mask_res = _resample(mask, is_label=True)
+
+            features = {}
+            for lab in labels:
+                try:
+                    f = rjl.extract_radiomic_features(image_res, mask_res, labels = int(lab))
+                    features[int(lab)] = {k: round(float(v), 4) for k, v in f.items()}
+                except Exception as e:
+                    print(f"WARNING: label {lab} skipped ({e})")
+                    features[int(lab)] = {feat: 0 for feat in standard_features}
     except Exception as e:
-        print(f"WARNING: radiomics raised an exception (settings all features to 0): {e}")
-        features = {feat: 0 for feat in standard_features}
-
-    # only keep subset of features
-    # meaningful_features = ['shape_Elongation', 'shape_Flatness', 'shape_LeastAxisLength']
-    # features = {k: v for k, v in features.items() if k in meaningful_features}
-
-    features = {k: round(float(v), 4) for k, v in features.items()}  # round to 4 decimals and cast to python float
+        print(f"WARNING: radiomics raised an exception (setting all features to 0): {e}")
+        features = {0: {feat: 0 for feat in standard_features}}
 
     return seg_file.name.split(".")[0], features
-
 
 def get_radiomics_features_for_entire_dir(ct_file:Path, mask_dir:Path, file_out:Path):
     masks = sorted(list(mask_dir.glob("*.nii.gz")))
