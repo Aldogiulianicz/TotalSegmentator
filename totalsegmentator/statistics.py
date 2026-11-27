@@ -51,7 +51,7 @@ def get_radiomics_features(seg_file, img_file="ct.nii.gz"):
             image_res = _resample_simpleITK(image)
             mask_res = _resample_simpleITK(mask, interpolator=sitk.sitkNearestNeighbor)
 
-            features = rjl.extract_radiomic_features(image_res, mask_res, labels=label)
+            features = rjl.extract_radiomic_features(image_res, mask_res, labels=label, keep_largest_only=False)
             features.pop("label_id", None)
         else:
             print("WARNING: Entire mask is 0 or 1. Setting all features to 0")
