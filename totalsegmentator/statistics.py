@@ -16,19 +16,22 @@ def get_radiomics_features(seg_file, img_file="ct.nii.gz"):
     import SimpleITK as sitk
     import radiomicsjl as rjl
 
-    def _resample_simpleITK(image, interpolator = sitk.sitkLinear, spacing_out=(3.0, 3.0, 3.0)):
+    def _resample_simpleITK(image, interpolator = sitk.sitkBSpline, spacing_out=(3.0, 3.0, 3.0)):
         original_spacing = image.GetSpacing()
         original_size = image.GetSize()
 
         new_size = [int(np.ceil(osz * ospc / nspc))
             for osz, ospc, nspc in zip(original_size, original_spacing, spacing_out)]
 
+        origin_idx = [0.5 * (nspc - ospc) / ospc for ospc, nspc in zip(original_spacing, spacing_out)]
+        new_origin = image.TransformContinuousIndexToPhysicalPoint(origin_idx)
+
         return sitk.Resample(
             image,
             new_size,
             sitk.Transform(),
             interpolator,
-            image.GetOrigin(),
+            new_origin,
             spacing_out,
             image.GetDirection(),
             0,
@@ -49,6 +52,7 @@ def get_radiomics_features(seg_file, img_file="ct.nii.gz"):
             mask_res = _resample_simpleITK(mask, interpolator=sitk.sitkNearestNeighbor)
 
             features = rjl.extract_radiomic_features(image_res, mask_res, labels=label)
+            features.pop("label_id", None)
         else:
             print("WARNING: Entire mask is 0 or 1. Setting all features to 0")
             features = {feat: 0 for feat in standard_features}
